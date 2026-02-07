@@ -1,0 +1,461 @@
+#!/bin/bash
+# rex — A dynamic CLI tool that auto-discovers scripts from configured directories
+#
+# Scripts are organized into topics (subdirectories) and standalone commands.
+# Rex reads metadata from script headers for descriptions and ignore rules.
+#
+# Script metadata comments:
+#   # Description: <text>              - Script description
+#   # @raycast.description <text>      - Also accepted for description
+#   # Rex.ignore                       - Exclude script from discovery
+#   # Runbook.ignore                   - Also accepted (backwards compat)
+
+set -euo pipefail
+
+REX_VERSION="1.0.0"
+REX_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rex"
+REX_CONFIG_FILE="$REX_CONFIG_DIR/config"
+
+# ── Config ────────────────────────────────────────────────────────────────────
+
+ensure_config() {
+    if [[ ! -d "$REX_CONFIG_DIR" ]]; then
+        mkdir -p "$REX_CONFIG_DIR"
+    fi
+    if [[ ! -f "$REX_CONFIG_FILE" ]]; then
+        cat > "$REX_CONFIG_FILE" << 'EOF'
+# Rex script directories (one path per line)
+# Add directories with: rex dirs add <path>
+EOF
+    fi
+}
+
+# Read configured directories, skip comments and blank lines
+get_directories() {
+    ensure_config
+    while IFS= read -r line; do
+        line="${line%%#*}"           # strip inline comments
+        line="${line#"${line%%[![:space:]]*}"}"  # trim leading whitespace
+        line="${line%"${line##*[![:space:]]}"}"  # trim trailing whitespace
+        [[ -n "$line" ]] && [[ -d "$line" ]] && echo "$line"
+    done < "$REX_CONFIG_FILE"
+}
+
+# ── Metadata ──────────────────────────────────────────────────────────────────
+
+get_script_description() {
+    local script="$1"
+    local description=""
+    if [[ -f "$script" ]]; then
+        description=$(grep -m1 "^#.*@raycast\.description\|^#.*Description:" "$script" 2>/dev/null \
+            | sed 's/^#[[:space:]]*@raycast\.description[[:space:]]*//' \
+            | sed 's/^#[[:space:]]*Description:[[:space:]]*//')
+    fi
+    echo "${description:-No description available}"
+}
+
+is_script_ignored() {
+    local script="$1"
+    [[ -f "$script" ]] && grep -qm1 "^#.*Rex\.ignore\|^#.*Runbook\.ignore" "$script" 2>/dev/null
+}
+
+# ── Discovery ─────────────────────────────────────────────────────────────────
+
+# Discover all topics across all configured directories
+# Output: topic_name|directory_path
+discover_topics() {
+    local seen_topics=()
+    while IFS= read -r dir; do
+        find "$dir" -maxdepth 1 -type d ! -name ".*" ! -path "$dir" 2>/dev/null | sort | while read -r topic_dir; do
+            local topic
+            topic=$(basename "$topic_dir")
+            # Only include if it has executable files
+            if find "$topic_dir" -maxdepth 1 -type f -perm +111 2>/dev/null | grep -q .; then
+                echo "$topic|$dir"
+            fi
+        done
+    done < <(get_directories)
+}
+
+# Get unique topic names
+discover_topic_names() {
+    discover_topics | cut -d'|' -f1 | sort -u
+}
+
+# Discover commands for a topic across all directories
+# Output: command_name|script_path|source_dir
+discover_commands() {
+    local topic="$1"
+    local seen_commands=()
+
+    while IFS= read -r dir; do
+        local topic_dir="$dir/$topic"
+        [[ -d "$topic_dir" ]] || continue
+
+        find "$topic_dir" -maxdepth 1 -type f -perm +111 2>/dev/null | sort | while read -r script; do
+            is_script_ignored "$script" && continue
+            local bn
+            bn=$(basename "$script")
+            local command_name="${bn%.*}"
+            # Strip topic prefix (e.g., nas-sync -> sync)
+            command_name="${command_name#"$topic"-}"
+            echo "$command_name|$script|$dir"
+        done
+    done < <(get_directories)
+}
+
+# Discover standalone scripts across all directories
+# Output: command_name|script_path|source_dir
+discover_standalone() {
+    while IFS= read -r dir; do
+        find "$dir" -maxdepth 1 -type f -perm +111 ! -name "rex*" ! -name "runbook*" 2>/dev/null | sort | while read -r script; do
+            is_script_ignored "$script" && continue
+            local bn
+            bn=$(basename "$script")
+            local command_name="${bn%.*}"
+            echo "$command_name|$script|$dir"
+        done
+    done < <(get_directories)
+}
+
+# Resolve a command, returning the first match (first directory wins)
+# Output: script_path
+resolve_command() {
+    local topic="$1"
+    local command="$2"
+    local seen=()
+
+    while IFS='|' read -r cmd script_path source_dir; do
+        if [[ "$cmd" == "$command" ]]; then
+            echo "$script_path"
+            return 0
+        fi
+    done < <(discover_commands "$topic")
+    return 1
+}
+
+resolve_standalone() {
+    local command="$1"
+
+    while IFS='|' read -r cmd script_path source_dir; do
+        if [[ "$cmd" == "$command" ]]; then
+            echo "$script_path"
+            return 0
+        fi
+    done < <(discover_standalone)
+    return 1
+}
+
+# ── Display ───────────────────────────────────────────────────────────────────
+
+show_help() {
+    echo "rex v${REX_VERSION} — script runner"
+    echo ""
+    echo "Usage: rex <topic> <command> [args...]"
+    echo "       rex <command> [args...]"
+    echo ""
+
+    local dirs
+    dirs=$(get_directories)
+    if [[ -z "$dirs" ]]; then
+        echo "No directories configured. Add one with:"
+        echo "  rex dirs add <path>"
+        return
+    fi
+
+    local topics
+    topics=$(discover_topic_names)
+    if [[ -n "$topics" ]]; then
+        echo "Topics:"
+        while read -r topic; do
+            local cmd_count
+            cmd_count=$(discover_commands "$topic" | wc -l | tr -d ' ')
+            printf "  %-16s %s commands\n" "$topic" "$cmd_count"
+        done <<< "$topics"
+        echo ""
+    fi
+
+    local standalone_count
+    standalone_count=$(discover_standalone | wc -l | tr -d ' ')
+    if [[ "$standalone_count" -gt 0 ]]; then
+        echo "Standalone commands: $standalone_count available"
+        echo ""
+    fi
+
+    echo "Commands:"
+    echo "  rex <topic> help       Show commands for a topic"
+    echo "  rex list               List all available commands"
+    echo "  rex dirs               Show configured directories"
+    echo "  rex dirs add <path>    Add a script directory"
+    echo "  rex dirs remove <path> Remove a script directory"
+    echo "  rex version            Show version"
+}
+
+show_topic_help() {
+    local topic="$1"
+    echo "Usage: rex $topic <command> [args...]"
+    echo ""
+    echo "Available commands:"
+
+    local seen=()
+    while IFS='|' read -r command script_path source_dir; do
+        # Deduplicate: first directory wins
+        local already_seen=false
+        for s in "${seen[@]+"${seen[@]}"}"; do
+            [[ "$s" == "$command" ]] && already_seen=true && break
+        done
+        $already_seen && continue
+        seen+=("$command")
+
+        local description
+        description=$(get_script_description "$script_path")
+        printf "  %-24s %s\n" "$command" "$description"
+    done < <(discover_commands "$topic")
+}
+
+list_all_commands() {
+    local dirs
+    dirs=$(get_directories)
+    if [[ -z "$dirs" ]]; then
+        echo "No directories configured. Add one with:"
+        echo "  rex dirs add <path>"
+        return
+    fi
+
+    echo "All available commands:"
+    echo ""
+
+    # Track seen commands for dedup
+    local seen_commands=()
+
+    discover_topic_names | while read -r topic; do
+        echo "[$topic]"
+        local seen=()
+        while IFS='|' read -r command script_path source_dir; do
+            local already_seen=false
+            for s in "${seen[@]+"${seen[@]}"}"; do
+                [[ "$s" == "$command" ]] && already_seen=true && break
+            done
+            $already_seen && continue
+            seen+=("$command")
+
+            local description
+            description=$(get_script_description "$script_path")
+            local dir_label=""
+            # Show source dir if multiple dirs configured
+            local dir_count
+            dir_count=$(get_directories | wc -l | tr -d ' ')
+            if [[ "$dir_count" -gt 1 ]]; then
+                dir_label=" ($(basename "$source_dir"))"
+            fi
+            printf "  %-24s %s%s\n" "$command" "$description" "$dir_label"
+        done < <(discover_commands "$topic")
+        echo ""
+    done
+
+    # Standalone commands
+    local standalone
+    standalone=$(discover_standalone)
+    if [[ -n "$standalone" ]]; then
+        echo "[standalone]"
+        local seen=()
+        while IFS='|' read -r command script_path source_dir; do
+            local already_seen=false
+            for s in "${seen[@]+"${seen[@]}"}"; do
+                [[ "$s" == "$command" ]] && already_seen=true && break
+            done
+            $already_seen && continue
+            seen+=("$command")
+
+            local description
+            description=$(get_script_description "$script_path")
+            local dir_label=""
+            local dir_count
+            dir_count=$(get_directories | wc -l | tr -d ' ')
+            if [[ "$dir_count" -gt 1 ]]; then
+                dir_label=" ($(basename "$source_dir"))"
+            fi
+            printf "  %-24s %s%s\n" "$command" "$description" "$dir_label"
+        done <<< "$standalone"
+    fi
+}
+
+# ── Directory Management ─────────────────────────────────────────────────────
+
+cmd_dirs() {
+    local subcmd="${1:-}"
+
+    case "$subcmd" in
+        "add")
+            local path="${2:-}"
+            if [[ -z "$path" ]]; then
+                echo "Usage: rex dirs add <path>"
+                exit 1
+            fi
+
+            # Resolve to absolute path
+            local abs_path
+            abs_path=$(cd "$path" 2>/dev/null && pwd)
+            if [[ -z "$abs_path" ]]; then
+                echo "Error: directory does not exist: $path"
+                exit 1
+            fi
+
+            # Check if already configured
+            while IFS= read -r existing; do
+                if [[ "$existing" == "$abs_path" ]]; then
+                    echo "Already configured: $abs_path"
+                    return
+                fi
+            done < <(get_directories)
+
+            ensure_config
+            echo "$abs_path" >> "$REX_CONFIG_FILE"
+            echo "Added: $abs_path"
+            ;;
+
+        "remove")
+            local path="${2:-}"
+            if [[ -z "$path" ]]; then
+                echo "Usage: rex dirs remove <path>"
+                exit 1
+            fi
+
+            # Resolve to absolute path (may not exist anymore)
+            local abs_path
+            if [[ -d "$path" ]]; then
+                abs_path=$(cd "$path" && pwd)
+            else
+                abs_path="$path"
+            fi
+
+            ensure_config
+            local tmp
+            tmp=$(mktemp)
+            local found=false
+            while IFS= read -r line; do
+                local clean="${line%%#*}"
+                clean="${clean#"${clean%%[![:space:]]*}"}"
+                clean="${clean%"${clean##*[![:space:]]}"}"
+                if [[ "$clean" == "$abs_path" ]]; then
+                    found=true
+                else
+                    echo "$line" >> "$tmp"
+                fi
+            done < "$REX_CONFIG_FILE"
+
+            if $found; then
+                mv "$tmp" "$REX_CONFIG_FILE"
+                echo "Removed: $abs_path"
+            else
+                rm "$tmp"
+                echo "Not found in config: $abs_path"
+                exit 1
+            fi
+            ;;
+
+        "")
+            # List configured directories
+            local dirs
+            dirs=$(get_directories)
+            if [[ -z "$dirs" ]]; then
+                echo "No directories configured."
+                echo ""
+                echo "Add one with: rex dirs add <path>"
+            else
+                echo "Configured directories:"
+                while IFS= read -r dir; do
+                    local topic_count cmd_count
+                    topic_count=$(find "$dir" -maxdepth 1 -type d ! -name ".*" ! -path "$dir" 2>/dev/null | wc -l | tr -d ' ')
+                    echo "  $dir ($topic_count topics)"
+                done <<< "$dirs"
+            fi
+            ;;
+
+        *)
+            echo "Unknown dirs command: $subcmd"
+            echo "Usage: rex dirs [add|remove] [path]"
+            exit 1
+            ;;
+    esac
+}
+
+# ── Execution ─────────────────────────────────────────────────────────────────
+
+run_script() {
+    local script="$1"
+    shift
+
+    # Export full invocation for child scripts
+    local invocation="rex"
+    for arg in "$@"; do
+        invocation+=" $(printf %q "$arg")"
+    done
+    export REX_CMD="$invocation"
+
+    exec "$script" "$@"
+}
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+main() {
+    case "${1:-}" in
+        "help"|"--help"|"-h"|"")
+            show_help
+            ;;
+        "version"|"--version"|"-v")
+            echo "rex v${REX_VERSION}"
+            ;;
+        "list")
+            list_all_commands
+            ;;
+        "dirs")
+            shift
+            cmd_dirs "$@"
+            ;;
+        *)
+            # Check if first arg is a known topic
+            local topic_match=""
+            while IFS='|' read -r topic_name topic_dir; do
+                if [[ "$topic_name" == "$1" ]]; then
+                    topic_match="$1"
+                    break
+                fi
+            done < <(discover_topics)
+
+            if [[ -n "$topic_match" ]]; then
+                local topic="$1"
+                local command="${2:-}"
+
+                if [[ -z "$command" || "$command" == "help" || "$command" == "--help" || "$command" == "-h" ]]; then
+                    show_topic_help "$topic"
+                else
+                    local script_path
+                    script_path=$(resolve_command "$topic" "$command")
+                    if [[ -n "$script_path" ]]; then
+                        run_script "$script_path" "${@:3}"
+                    else
+                        echo "Unknown $topic command: $command"
+                        echo ""
+                        show_topic_help "$topic"
+                        exit 1
+                    fi
+                fi
+            else
+                # Try standalone command
+                local script_path
+                script_path=$(resolve_standalone "$1")
+                if [[ -n "$script_path" ]]; then
+                    run_script "$script_path" "${@:2}"
+                else
+                    echo "Unknown topic or command: $1"
+                    echo ""
+                    show_help
+                    exit 1
+                fi
+            fi
+            ;;
+    esac
+}
+
+main "$@"
