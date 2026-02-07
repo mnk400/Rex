@@ -183,7 +183,7 @@ show_help() {
     fi
 
     echo "Commands:"
-    echo "  rex <topic> help       Show commands for a topic"
+    echo "  rex <topic> list       Show commands for a topic"
     echo "  rex list               List all available commands"
     echo "  rex dirs               Show configured directories"
     echo "  rex dirs add <path>    Add a script directory"
@@ -427,7 +427,7 @@ main() {
                 local topic="$1"
                 local command="${2:-}"
 
-                if [[ -z "$command" || "$command" == "help" || "$command" == "--help" || "$command" == "-h" ]]; then
+                if [[ -z "$command" || "$command" == "help" || "$command" == "--help" || "$command" == "-h" || "$command" == "list" ]]; then
                     show_topic_help "$topic"
                 else
                     local script_path
