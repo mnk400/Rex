@@ -41,6 +41,11 @@ jobs:
           echo "Previous version: $LATEST_TAG"
           echo "New version: $NEW_VERSION"
 
+      - name: Set version in binary
+        run: |
+          VERSION="${{ steps.get_tag.outputs.version_number }}"
+          sed -i "s/^REX_VERSION=\".*\"/REX_VERSION=\"${VERSION}\"/" bin/rex
+
       - name: Create release archive
         id: create_archive
         run: |
