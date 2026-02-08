@@ -460,7 +460,7 @@ BASH_COMPLETION
             cat << 'ZSH_COMPLETION'
 _rex_zsh_completions() {
     local completions
-    completions=("${(@f)$(rex --cmplt "$CURRENT" "${words[@]}" 2>/dev/null)}")
+    completions=("${(@f)$(rex --cmplt "$((CURRENT - 1))" "${words[@]}" 2>/dev/null)}")
     compadd -a completions
 }
 compdef _rex_zsh_completions rex
