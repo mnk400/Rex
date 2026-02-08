@@ -380,6 +380,102 @@ cmd_dirs() {
     esac
 }
 
+# ── Completions ───────────────────────────────────────────────────────────────
+
+# Output completion words for the current cursor position
+# Usage: rex --cmplt <cword_index> <words...>
+_rex_completions() {
+    local cword="$1"
+    shift
+    local words=("$@")
+
+    case "$cword" in
+        1)
+            # Complete first argument: built-ins + topics + standalone
+            echo "help"
+            echo "version"
+            echo "list"
+            echo "dirs"
+            echo "completions"
+            discover_topic_names 2>/dev/null
+            discover_standalone 2>/dev/null | cut -d'|' -f1
+            ;;
+        2)
+            local prev="${words[1]:-}"
+            case "$prev" in
+                dirs)
+                    echo "add"
+                    echo "remove"
+                    echo "list"
+                    ;;
+                completions)
+                    echo "bash"
+                    echo "zsh"
+                    ;;
+                *)
+                    # If prev is a topic, complete with its commands
+                    local is_topic=false
+                    while IFS='|' read -r topic_name topic_dir; do
+                        if [[ "$topic_name" == "$prev" ]]; then
+                            is_topic=true
+                            break
+                        fi
+                    done < <(discover_topics 2>/dev/null)
+
+                    if $is_topic; then
+                        echo "help"
+                        echo "list"
+                        local seen=()
+                        while IFS='|' read -r cmd script_path source_dir; do
+                            local already_seen=false
+                            for s in "${seen[@]+"${seen[@]}"}"; do
+                                [[ "$s" == "$cmd" ]] && already_seen=true && break
+                            done
+                            $already_seen && continue
+                            seen+=("$cmd")
+                            echo "$cmd"
+                        done < <(discover_commands "$prev" 2>/dev/null)
+                    fi
+                    ;;
+            esac
+            ;;
+    esac
+}
+
+cmd_completions() {
+    local shell="${1:-}"
+    case "$shell" in
+        bash)
+            cat << 'BASH_COMPLETION'
+_rex_bash_completions() {
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local completions
+    completions=$(rex --cmplt "$COMP_CWORD" "${COMP_WORDS[@]}" 2>/dev/null)
+    COMPREPLY=($(compgen -W "$completions" -- "$cur"))
+}
+complete -F _rex_bash_completions rex
+BASH_COMPLETION
+            ;;
+        zsh)
+            cat << 'ZSH_COMPLETION'
+_rex_zsh_completions() {
+    local completions
+    completions=("${(@f)$(rex --cmplt "$CURRENT" "${words[@]}" 2>/dev/null)}")
+    compadd -a completions
+}
+compdef _rex_zsh_completions rex
+ZSH_COMPLETION
+            ;;
+        *)
+            echo "Usage: rex completions [bash|zsh]"
+            echo ""
+            echo "Add to your shell profile:"
+            echo "  bash: eval \"\$(rex completions bash)\""
+            echo "  zsh:  eval \"\$(rex completions zsh)\""
+            ;;
+    esac
+}
+
 # ── Execution ─────────────────────────────────────────────────────────────────
 
 run_script() {
@@ -408,6 +504,14 @@ main() {
             ;;
         "list")
             list_all_commands
+            ;;
+        "completions")
+            shift
+            cmd_completions "$@"
+            ;;
+        "--cmplt")
+            shift
+            _rex_completions "$@"
             ;;
         "dirs")
             shift

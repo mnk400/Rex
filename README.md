@@ -1,4 +1,4 @@
-# Rex
+# Rex 🦖
 
 Rex is a dynamic CLI tool that auto-discovers scripts from configured directories. Point it at any directory of scripts and it builds a structured command interface automatically.
 
@@ -39,6 +39,8 @@ Rex uses directory layout to build a two-tier command structure:
 │   └── network-speed.sh        # → rex network speed
 └── amzn-stats.sh               # → rex amzn-stats (standalone)
 ```
+
+**Nomenclature**
 
 - **Topics**: Subdirectories with executable scripts become topics
 - **Commands**: Scripts in topic dirs become subcommands (topic prefix is auto-stripped)
@@ -83,6 +85,20 @@ To hide a script from rex:
 ```bash
 # Rex.ignore
 ```
+
+## Shell Completions
+
+Enable tab completions by adding to your shell profile:
+
+```bash
+# bash (~/.bashrc)
+eval "$(rex completions bash)"
+
+# zsh (~/.zshrc)
+eval "$(rex completions zsh)"
+```
+
+This gives you tab completion for topics, commands, and built-in subcommands.
 
 ## Config
 
