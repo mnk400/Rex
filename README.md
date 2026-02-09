@@ -1,6 +1,8 @@
 # Rex 🦖
 
-Rex is a dynamic CLI tool that auto-discovers scripts from configured directories. Point it at any directory of scripts and it builds a structured command interface automatically.
+Rex is a CLI tool that auto-discovers CLI executable scripts from configured directories. Rex helps you create a parent command for your local scripts and helps keeps everything organized and neat under a system of topics and subcommands. Point it at any directory or a list of directories that contain scripts and it builds a structured command interface automatically for you!
+
+I built rex because I kept forgetting what I named a certain automation script, and then I'd to go digging for what it's called, with rex it's significantly easier to find and execute what I need.
 
 ## Install
 
@@ -23,9 +25,9 @@ Add a directory of scripts:
 rex dirs add ~/scripts
 ```
 
-That's it. Rex will discover topics and commands from the directory structure.
+Rex will automatically discover topics and commands from the directories you added.
 
-## How It Works
+## How Rex Works
 
 Rex uses directory layout to build a two-tier command structure:
 
@@ -37,13 +39,13 @@ Rex uses directory layout to build a two-tier command structure:
 ├── network/                    # Topic: network
 │   ├── network-stats.sh        # → rex network stats
 │   └── network-speed.sh        # → rex network speed
-└── amzn-stats.sh               # → rex amzn-stats (standalone)
+└── stock-stats.sh               # → rex stock-stats (standalone)
 ```
 
 **Nomenclature**
 
 - **Topics**: Subdirectories with executable scripts become topics
-- **Commands**: Scripts in topic dirs become subcommands (topic prefix is auto-stripped)
+- **Commands**: Scripts in topic dirs become subcommands (topic prefix is auto-stripped if appended)
 - **Standalone**: Executables in the root become top-level commands
 
 ## Usage
@@ -67,28 +69,24 @@ Multiple directories are supported: topics and commands are merged across all of
 
 ## Script Metadata
 
-Add metadata to your scripts via comments:
+Rex also supports reading script metadata via comments, for example to show command descriptions when running `rex list` you can add a "Description" meta tag to the top of the file:
 
 ```bash
 #!/bin/bash
 # Description: Mount NAS to local filesystem
 ```
 
-Rex is compatible with your existing raycast scripts as well! 
-```bash
-# or for Raycast compatibility:
-# @raycast.description Mount NAS to local filesystem
-```
+If your existing scripts are built for raycast, good news! we're compatible. Rex will automatically read @raycast.description without any further manual changes needed.
 
 To hide a script from rex:
 
 ```bash
-# Rex.ignore
+# rex.ignore
 ```
 
 ## Shell Completions
 
-Enable tab completions by adding to your shell profile:
+Rex supports tab completions! Enable tab completions by adding to your shell profile:
 
 ```bash
 # bash (~/.bashrc)

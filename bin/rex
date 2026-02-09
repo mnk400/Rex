@@ -7,7 +7,7 @@
 # Script metadata comments:
 #   # Description: <text>              - Script description
 #   # @raycast.description <text>      - Also accepted for description
-#   # Rex.ignore                       - Exclude script from discovery
+#   # rex.ignore                       - Exclude script from discovery
 #   # Runbook.ignore                   - Also accepted (backwards compat)
 
 set -euo pipefail
@@ -56,7 +56,7 @@ get_script_description() {
 
 is_script_ignored() {
     local script="$1"
-    [[ -f "$script" ]] && grep -qm1 "^#.*Rex\.ignore\|^#.*Runbook\.ignore" "$script" 2>/dev/null
+    [[ -f "$script" ]] && grep -qm1 "^#.*rex\.ignore\|^#.*Runbook\.ignore" "$script" 2>/dev/null
 }
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
