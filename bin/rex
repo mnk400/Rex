@@ -39,6 +39,7 @@ get_directories() {
         line="${line%"${line##*[![:space:]]}"}"  # trim trailing whitespace
         [[ -n "$line" ]] && [[ -d "$line" ]] && echo "$line"
     done < "$REX_CONFIG_FILE"
+    return 0
 }
 
 # ── Metadata ──────────────────────────────────────────────────────────────────
@@ -128,7 +129,6 @@ _resolve_first_match() {
             return 0
         fi
     done
-    return 1
 }
 
 resolve_command() {
@@ -274,7 +274,7 @@ cmd_dirs() {
 
             # Resolve to absolute path
             local abs_path
-            abs_path=$(cd "$path" 2>/dev/null && pwd)
+            abs_path=$(cd "$path" 2>/dev/null && pwd || true)
             if [[ -z "$abs_path" ]]; then
                 echo "Error: directory does not exist: $path"
                 exit 1
