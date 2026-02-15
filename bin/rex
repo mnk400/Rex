@@ -185,6 +185,7 @@ show_help() {
     echo "Commands:"
     echo "  rex <topic> list       Show commands for a topic"
     echo "  rex list               List all available commands"
+    echo "  rex edit <cmd>         Open a script in \$EDITOR"
     echo "  rex dirs               Show configured directories"
     echo "  rex dirs add <path>    Add a script directory"
     echo "  rex dirs remove <path> Remove a script directory"
@@ -396,6 +397,7 @@ _rex_completions() {
             echo "version"
             echo "list"
             echo "dirs"
+            echo "edit"
             echo "completions"
             discover_topic_names 2>/dev/null
             discover_standalone 2>/dev/null | cut -d'|' -f1
@@ -476,6 +478,49 @@ ZSH_COMPLETION
     esac
 }
 
+# ── Edit ──────────────────────────────────────────────────────────────────────
+
+cmd_edit() {
+    local target="${1:-}"
+    if [[ -z "$target" ]]; then
+        echo "Usage: rex edit <command>"
+        echo "       rex edit <topic> <command>"
+        exit 1
+    fi
+
+    local script=""
+
+    # Check if first arg is a topic
+    local topic_match=""
+    while IFS='|' read -r topic_name topic_dir; do
+        if [[ "$topic_name" == "$target" ]]; then
+            topic_match="$target"
+            break
+        fi
+    done < <(discover_topics)
+
+    if [[ -n "$topic_match" ]]; then
+        local command="${2:-}"
+        if [[ -z "$command" ]]; then
+            echo "Usage: rex edit <topic> <command>"
+            exit 1
+        fi
+        script=$(resolve_command "$topic_match" "$command")
+        if [[ -z "$script" ]]; then
+            echo "Unknown $topic_match command: $command"
+            exit 1
+        fi
+    else
+        script=$(resolve_standalone "$target")
+        if [[ -z "$script" ]]; then
+            echo "Unknown command: $target"
+            exit 1
+        fi
+    fi
+
+    "${EDITOR:-vi}" "$script"
+}
+
 # ── Execution ─────────────────────────────────────────────────────────────────
 
 run_script() {
@@ -504,6 +549,10 @@ main() {
             ;;
         "list")
             list_all_commands
+            ;;
+        "edit")
+            shift
+            cmd_edit "$@"
             ;;
         "completions")
             shift

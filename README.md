@@ -55,6 +55,8 @@ rex                              # Show help
 rex list                         # List all commands
 rex <topic> <command> [args...]  # Run a topic command
 rex <command> [args...]          # Run a standalone command
+rex edit <command>               # Open a script in $EDITOR
+rex edit <topic> <command>       # Open a topic script in $EDITOR
 ```
 
 ### Managing directories
