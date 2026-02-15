@@ -118,32 +118,37 @@ discover_standalone() {
     done < <(get_directories)
 }
 
-# Resolve a command, returning the first match (first directory wins)
+# Resolve the first matching command from pipe-delimited discovery output
 # Output: script_path
-resolve_command() {
-    local topic="$1"
-    local command="$2"
-    local seen=()
-
+_resolve_first_match() {
+    local command="$1"
     while IFS='|' read -r cmd script_path source_dir; do
         if [[ "$cmd" == "$command" ]]; then
             echo "$script_path"
             return 0
         fi
-    done < <(discover_commands "$topic")
+    done
     return 1
 }
 
-resolve_standalone() {
-    local command="$1"
+resolve_command() {
+    _resolve_first_match "$2" < <(discover_commands "$1")
+}
 
-    while IFS='|' read -r cmd script_path source_dir; do
-        if [[ "$cmd" == "$command" ]]; then
-            echo "$script_path"
-            return 0
-        fi
-    done < <(discover_standalone)
-    return 1
+resolve_standalone() {
+    _resolve_first_match "$1" < <(discover_standalone)
+}
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+# String-based dedup (bash 3.x compatible). Usage:
+#   local _seen="|"
+#   _is_seen "$name" && continue; _seen="$_seen$name|"
+_is_seen() {
+    case "$_seen" in
+        *"|$1|"*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # ── Display ───────────────────────────────────────────────────────────────────
@@ -198,20 +203,30 @@ show_topic_help() {
     echo ""
     echo "Available commands:"
 
-    local seen=()
+    local _seen="|"
     while IFS='|' read -r command script_path source_dir; do
-        # Deduplicate: first directory wins
-        local already_seen=false
-        for s in "${seen[@]+"${seen[@]}"}"; do
-            [[ "$s" == "$command" ]] && already_seen=true && break
-        done
-        $already_seen && continue
-        seen+=("$command")
+        _is_seen "$command" && continue; _seen="$_seen$command|"
 
         local description
         description=$(get_script_description "$script_path")
         printf "  %-24s %s\n" "$command" "$description"
     done < <(discover_commands "$topic")
+}
+
+_print_command_list() {
+    local dir_count="$1"
+    local _seen="|"
+    while IFS='|' read -r command script_path source_dir; do
+        _is_seen "$command" && continue; _seen="$_seen$command|"
+
+        local description
+        description=$(get_script_description "$script_path")
+        local dir_label=""
+        if [[ "$dir_count" -gt 1 ]]; then
+            dir_label=" ($(basename "$source_dir"))"
+        fi
+        printf "  %-24s %s%s\n" "$command" "$description" "$dir_label"
+    done
 }
 
 list_all_commands() {
@@ -226,31 +241,12 @@ list_all_commands() {
     echo "All available commands:"
     echo ""
 
-    # Track seen commands for dedup
-    local seen_commands=()
+    local dir_count
+    dir_count=$(get_directories | wc -l | tr -d ' ')
 
     discover_topic_names | while read -r topic; do
         echo "[$topic]"
-        local seen=()
-        while IFS='|' read -r command script_path source_dir; do
-            local already_seen=false
-            for s in "${seen[@]+"${seen[@]}"}"; do
-                [[ "$s" == "$command" ]] && already_seen=true && break
-            done
-            $already_seen && continue
-            seen+=("$command")
-
-            local description
-            description=$(get_script_description "$script_path")
-            local dir_label=""
-            # Show source dir if multiple dirs configured
-            local dir_count
-            dir_count=$(get_directories | wc -l | tr -d ' ')
-            if [[ "$dir_count" -gt 1 ]]; then
-                dir_label=" ($(basename "$source_dir"))"
-            fi
-            printf "  %-24s %s%s\n" "$command" "$description" "$dir_label"
-        done < <(discover_commands "$topic")
+        _print_command_list "$dir_count" < <(discover_commands "$topic")
         echo ""
     done
 
@@ -259,25 +255,7 @@ list_all_commands() {
     standalone=$(discover_standalone)
     if [[ -n "$standalone" ]]; then
         echo "[standalone]"
-        local seen=()
-        while IFS='|' read -r command script_path source_dir; do
-            local already_seen=false
-            for s in "${seen[@]+"${seen[@]}"}"; do
-                [[ "$s" == "$command" ]] && already_seen=true && break
-            done
-            $already_seen && continue
-            seen+=("$command")
-
-            local description
-            description=$(get_script_description "$script_path")
-            local dir_label=""
-            local dir_count
-            dir_count=$(get_directories | wc -l | tr -d ' ')
-            if [[ "$dir_count" -gt 1 ]]; then
-                dir_label=" ($(basename "$source_dir"))"
-            fi
-            printf "  %-24s %s%s\n" "$command" "$description" "$dir_label"
-        done <<< "$standalone"
+        _print_command_list "$dir_count" <<< "$standalone"
     fi
 }
 
@@ -427,14 +405,9 @@ _rex_completions() {
                     if $is_topic; then
                         echo "help"
                         echo "list"
-                        local seen=()
+                        local _seen="|"
                         while IFS='|' read -r cmd script_path source_dir; do
-                            local already_seen=false
-                            for s in "${seen[@]+"${seen[@]}"}"; do
-                                [[ "$s" == "$cmd" ]] && already_seen=true && break
-                            done
-                            $already_seen && continue
-                            seen+=("$cmd")
+                            _is_seen "$cmd" && continue; _seen="$_seen$cmd|"
                             echo "$cmd"
                         done < <(discover_commands "$prev" 2>/dev/null)
                     fi
