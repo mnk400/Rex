@@ -190,6 +190,7 @@ show_help() {
     echo "Commands:"
     echo "  rex <topic> list       Show commands for a topic"
     echo "  rex list               List all available commands"
+    echo "  rex new <cmd>          Scaffold a new script"
     echo "  rex edit <cmd>         Open a script in \$EDITOR"
     echo "  rex dirs               Show configured directories"
     echo "  rex dirs add <path>    Add a script directory"
@@ -375,6 +376,7 @@ _rex_completions() {
             echo "version"
             echo "list"
             echo "dirs"
+            echo "new"
             echo "edit"
             echo "completions"
             discover_topic_names 2>/dev/null
@@ -451,6 +453,81 @@ ZSH_COMPLETION
     esac
 }
 
+# ── New ───────────────────────────────────────────────────────────────────────
+
+cmd_new() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        echo "Usage: rex new <command>"
+        echo "       rex new <topic> <command>"
+        exit 1
+    fi
+
+    ensure_config
+
+    # Collect directories into an array
+    local dirs=()
+    while IFS= read -r d; do
+        dirs+=("$d")
+    done < <(get_directories)
+
+    if [[ ${#dirs[@]} -eq 0 ]]; then
+        echo "No directories configured. Add one with:"
+        echo "  rex dirs add <path>"
+        exit 1
+    fi
+
+    # Pick target directory
+    local target_dir
+    if [[ ${#dirs[@]} -eq 1 ]]; then
+        target_dir="${dirs[0]}"
+    else
+        echo "Select a directory:"
+        local i
+        for i in "${!dirs[@]}"; do
+            echo "  $((i + 1))) ${dirs[$i]}"
+        done
+        local choice
+        read -p "Directory [1-${#dirs[@]}]: " choice
+        if ! [[ "$choice" =~ ^[0-9]+$ ]] || [[ "$choice" -lt 1 ]] || [[ "$choice" -gt ${#dirs[@]} ]]; then
+            echo "Invalid selection"
+            exit 1
+        fi
+        target_dir="${dirs[$((choice - 1))]}"
+    fi
+
+    # Determine file path
+    local file_path
+    if [[ -n "${2:-}" ]]; then
+        # Topic command: rex new <topic> <command>
+        local topic="$name"
+        local command="$2"
+        mkdir -p "$target_dir/$topic"
+        file_path="$target_dir/$topic/${topic}-${command}.sh"
+    else
+        # Standalone: rex new <command>
+        file_path="$target_dir/${name}.sh"
+    fi
+
+    # Check for conflicts
+    if [[ -e "$file_path" ]]; then
+        echo "Error: already exists: $file_path"
+        exit 1
+    fi
+
+    # Scaffold the script
+    cat > "$file_path" << 'TEMPLATE'
+#!/bin/bash
+# Description:
+
+TEMPLATE
+    chmod +x "$file_path"
+    echo "Created: $file_path"
+
+    # Open in editor
+    "${EDITOR:-vi}" "$file_path"
+}
+
 # ── Edit ──────────────────────────────────────────────────────────────────────
 
 cmd_edit() {
@@ -522,6 +599,10 @@ main() {
             ;;
         "list")
             list_all_commands
+            ;;
+        "new")
+            shift
+            cmd_new "$@"
             ;;
         "edit")
             shift
