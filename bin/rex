@@ -13,6 +13,13 @@
 set -euo pipefail
 
 REX_VERSION="0.dev.build"
+
+# BSD find (macOS) uses -perm +111, GNU find (Linux) uses -perm $_PERM_EXEC
+if [[ "$(uname)" == "Darwin" ]]; then
+    _PERM_EXEC="+111"
+else
+    _PERM_EXEC="/111"
+fi
 REX_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/rex"
 REX_CONFIG_FILE="$REX_CONFIG_DIR/config"
 
@@ -71,7 +78,7 @@ discover_topics() {
             local topic
             topic=$(basename "$topic_dir")
             # Only include if it has executable files
-            if find "$topic_dir" -maxdepth 1 -type f -perm +111 2>/dev/null | grep -q .; then
+            if find "$topic_dir" -maxdepth 1 -type f -perm $_PERM_EXEC 2>/dev/null | grep -q .; then
                 echo "$topic|$dir"
             fi
         done
@@ -93,7 +100,7 @@ discover_commands() {
         local topic_dir="$dir/$topic"
         [[ -d "$topic_dir" ]] || continue
 
-        find "$topic_dir" -maxdepth 1 -type f -perm +111 2>/dev/null | sort | while read -r script; do
+        find "$topic_dir" -maxdepth 1 -type f -perm $_PERM_EXEC 2>/dev/null | sort | while read -r script; do
             is_script_ignored "$script" && continue
             local bn
             bn=$(basename "$script")
@@ -109,7 +116,7 @@ discover_commands() {
 # Output: command_name|script_path|source_dir
 discover_standalone() {
     while IFS= read -r dir; do
-        find "$dir" -maxdepth 1 -type f -perm +111 ! -name "rex*" ! -name "runbook*" 2>/dev/null | sort | while read -r script; do
+        find "$dir" -maxdepth 1 -type f -perm $_PERM_EXEC ! -name "rex*" ! -name "runbook*" 2>/dev/null | sort | while read -r script; do
             is_script_ignored "$script" && continue
             local bn
             bn=$(basename "$script")
