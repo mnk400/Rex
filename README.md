@@ -6,11 +6,19 @@ I built rex because I kept forgetting what I named a certain automation script, 
 
 ## Install
 
+**Homebrew (macOS and Linux):**
+
 ```bash
 brew install mnk400/tap/rex
 ```
 
-Or clone and add `bin/` to your PATH:
+**Shell script (macOS and Linux):**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mnk400/rex/main/install.sh | bash
+```
+
+**Manual:**
 
 ```bash
 git clone https://github.com/mnk400/rex.git
