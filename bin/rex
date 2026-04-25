@@ -72,7 +72,6 @@ is_script_ignored() {
 # Discover all topics across all configured directories
 # Output: topic_name|directory_path
 discover_topics() {
-    local seen_topics=()
     while IFS= read -r dir; do
         find "$dir" -maxdepth 1 -type d ! -name ".*" ! -path "$dir" 2>/dev/null | sort | while read -r topic_dir; do
             local topic
@@ -94,8 +93,6 @@ discover_topic_names() {
 # Output: command_name|script_path|source_dir
 discover_commands() {
     local topic="$1"
-    local seen_commands=()
-
     while IFS= read -r dir; do
         local topic_dir="$dir/$topic"
         [[ -d "$topic_dir" ]] || continue
@@ -581,11 +578,11 @@ cmd_edit() {
 # ── Execution ─────────────────────────────────────────────────────────────────
 
 run_script() {
-    local script="$1"
-    shift
+    local invocation="$1"
+    local script="$2"
+    shift 2
 
     # Export full invocation for child scripts
-    local invocation="rex"
     for arg in "$@"; do
         invocation+=" $(printf %q "$arg")"
     done
@@ -647,7 +644,7 @@ main() {
                     local script_path
                     script_path=$(resolve_command "$topic" "$command")
                     if [[ -n "$script_path" ]]; then
-                        run_script "$script_path" "${@:3}"
+                        run_script "rex $topic $command" "$script_path" "${@:3}"
                     else
                         echo "Unknown $topic command: $command"
                         echo ""
@@ -660,7 +657,7 @@ main() {
                 local script_path
                 script_path=$(resolve_standalone "$1")
                 if [[ -n "$script_path" ]]; then
-                    run_script "$script_path" "${@:2}"
+                    run_script "rex $1" "$script_path" "${@:2}"
                 else
                     echo "Unknown topic or command: $1"
                     echo ""

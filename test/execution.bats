@@ -68,7 +68,7 @@ SCRIPT
 
     run "$REX_BIN" widgets spin --speed fast
     assert_success
-    assert_output --partial "REX_CMD: rex"
+    assert_output --partial "REX_CMD: rex widgets spin --speed fast"
 }
 
 @test "REX_CMD is set for standalone commands" {
@@ -76,5 +76,5 @@ SCRIPT
 
     run "$REX_BIN" fizzbuzz --verbose
     assert_success
-    assert_output --partial "REX_CMD: rex"
+    assert_output --partial "REX_CMD: rex fizzbuzz --verbose"
 }
