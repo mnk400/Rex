@@ -137,6 +137,8 @@ max_depth=3
 Notes:
 
 - Default `max_depth` is `1` (single topic level).
+- A directory only registers as a topic if it has a non-ignored executable reachable within `max_depth`. Directories deeper than `max_depth` will not surface, you'll have raise `max_depth` to surface them.
+- When a command and a subtopic share a name (e.g. both `nas/nas-backup.sh` and `nas/backup/`), the command always wins.
 
 ## License
 

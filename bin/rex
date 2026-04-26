@@ -84,16 +84,20 @@ get_max_depth() {
 }
 
 # Check if a topic path resolves to a usable topic directory in any configured
-# scripts dir. Matches discover_topics' rule: directory must contain executables
-# or subdirectories. One stat + at most two finds per configured dir — cheaper
-# than enumerating siblings.
+# scripts dir. A directory is usable iff a non-ignored executable is reachable
+# within the remaining depth budget — this is what makes topic-ness depth-aware
+# and keeps "hollow" parent directories out of help/dispatch.
 has_topic_dir() {
     local topic_path="$1"
+    local depth max_depth
+    depth=$(get_depth_from_path "$topic_path")
+    max_depth=$(get_max_depth)
+    local remaining=$((max_depth - depth))
+
     while IFS= read -r dir; do
         local candidate="$dir/$topic_path"
         [[ -d "$candidate" ]] || continue
-        if find "$candidate" -maxdepth 1 -type f -perm $_PERM_EXEC 2>/dev/null | grep -q . || \
-           find "$candidate" -mindepth 1 -maxdepth 1 -type d ! -name ".*" 2>/dev/null | grep -q .; then
+        if _dir_has_reachable_commands "$candidate" "$remaining"; then
             return 0
         fi
     done < <(get_directories)
@@ -135,11 +139,32 @@ is_script_ignored() {
 
 # ── Discovery ─────────────────────────────────────────────────────────────────
 
+# Does this directory contain a non-ignored executable within the depth budget?
+# $1: directory path
+# $2: remaining depth (0 = only this directory's direct files)
+# A single bounded find spans the whole budget so we don't fork per level.
+_dir_has_reachable_commands() {
+    local d="$1"
+    local remaining="${2:-0}"
+    local maxd=$((remaining + 1))
+    while IFS= read -r script; do
+        is_script_ignored "$script" && continue
+        return 0
+    done < <(find "$d" -maxdepth "$maxd" -type f -perm $_PERM_EXEC ! -path '*/.*' 2>/dev/null)
+    return 1
+}
+
 # Discover topics (or subtopics under a parent path) across all configured directories
 # Usage: discover_topics [parent_path]
 # Output: topic_name|directory_path
 discover_topics() {
     local parent="${1:-}"
+    local parent_depth=0
+    [[ -n "$parent" ]] && parent_depth=$(get_depth_from_path "$parent")
+    local max_depth
+    max_depth=$(get_max_depth)
+    local child_remaining=$((max_depth - parent_depth - 1))
+
     while IFS= read -r dir; do
         local search_dir="$dir"
         [[ -n "$parent" ]] && search_dir="$dir/$parent"
@@ -148,9 +173,7 @@ discover_topics() {
         find "$search_dir" -maxdepth 1 -type d ! -name ".*" ! -path "$search_dir" 2>/dev/null | sort | while read -r topic_dir; do
             local topic
             topic=$(basename "$topic_dir")
-            # Valid if it has executables OR has child subdirectories
-            if find "$topic_dir" -maxdepth 1 -type f -perm $_PERM_EXEC 2>/dev/null | grep -q . || \
-               find "$topic_dir" -maxdepth 1 -type d ! -path "$topic_dir" ! -name ".*" 2>/dev/null | grep -q .; then
+            if _dir_has_reachable_commands "$topic_dir" "$child_remaining"; then
                 echo "$topic|$dir"
             fi
         done
