@@ -37,13 +37,16 @@ Rex will automatically discover topics and commands from the directories you add
 
 ## How Rex Works
 
-Rex uses directory layout to build a two-tier command structure:
+Rex uses directory layout to build a topic/subtopic command structure.
 
 ```
 ~/scripts/
 ├── nas/                        # Topic: nas
 │   ├── nas-mount.sh            # → rex nas mount
-│   └── nas-sync.sh             # → rex nas sync
+│   ├── nas-sync.sh             # → rex nas sync
+│   └── backup/                 # Subtopic: backup (requires max_depth >= 2)
+│       ├── backup-create.sh    # → rex nas backup create
+│       └── backup-restore.sh   # → rex nas backup restore
 ├── network/                    # Topic: network
 │   ├── network-stats.sh        # → rex network stats
 │   └── network-speed.sh        # → rex network speed
@@ -52,19 +55,22 @@ Rex uses directory layout to build a two-tier command structure:
 
 **Nomenclature**
 
-- **Topics**: Subdirectories with executable scripts become topics
-- **Commands**: Scripts in topic dirs become subcommands (topic prefix is auto-stripped if appended)
+- **Topics/Subtopics**: Nested subdirectories become command groups up to `max_depth`
+- **Commands**: Executable scripts in a topic/subtopic dir become subcommands (leaf topic prefix is auto-stripped if appended)
 - **Standalone**: Executables in the root become top-level commands
 
 ## Usage
 
 ```bash
-rex                              # Show help
-rex list                         # List all commands
-rex <topic> <command> [args...]  # Run a topic command
-rex <command> [args...]          # Run a standalone command
-rex edit <command>               # Open a script in $EDITOR
-rex edit <topic> <command>       # Open a topic script in $EDITOR
+rex                                        # Show help
+rex list                                   # List all commands
+rex <topic> <command> [args...]            # Run a topic command
+rex <topic> <subtopic> <command> [args...] # Run a subtopic command (if max_depth allows)
+rex <command> [args...]                    # Run a standalone command
+rex new <command>                          # Create standalone script
+rex new <topic> [subtopic...] <command>    # Create topic/subtopic script
+rex edit <command>                         # Open standalone script in $EDITOR
+rex edit <topic> [subtopic...] <command>   # Open topic/subtopic script in $EDITOR
 ```
 
 ### Managing directories
@@ -106,11 +112,31 @@ eval "$(rex completions bash)"
 eval "$(rex completions zsh)"
 ```
 
-This gives you tab completion for topics, commands, and built-in subcommands.
+This gives you tab completion for topics/subtopics, commands, and built-in subcommands.
 
 ## Config
 
-Config lives at `~/.config/rex/config` (or `$XDG_CONFIG_HOME/rex/config`). It's just a list of directory paths, one per line.
+Config lives at `~/.config/rex/config` (or `$XDG_CONFIG_HOME/rex/config`).
+
+Supported config entries:
+
+- Directory paths (one per line)
+- `max_depth=<n>` where `<n>` is an integer `>= 1`
+
+Example:
+
+```text
+# script directories
+/Users/you/scripts
+/Users/you/workflows
+
+# enable subtopics to 3 levels deep
+max_depth=3
+```
+
+Notes:
+
+- Default `max_depth` is `1` (single topic level).
 
 ## License
 

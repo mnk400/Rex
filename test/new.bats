@@ -117,3 +117,30 @@ setup() {
     assert_success
     assert_output --partial "new"
 }
+
+# ── Subtopic new tests ───────────���──────────────────────────────���────────────
+
+@test "new creates subtopic command" {
+    run "$REX_BIN" new nas backup create
+    assert_success
+    assert_output --partial "Created: $SCRIPTS_DIR/nas/backup/backup-create.sh"
+    [[ -f "$SCRIPTS_DIR/nas/backup/backup-create.sh" ]]
+    [[ -x "$SCRIPTS_DIR/nas/backup/backup-create.sh" ]]
+}
+
+@test "new creates nested subtopic directories" {
+    [[ ! -d "$SCRIPTS_DIR/infra/aws/s3" ]]
+    run "$REX_BIN" new infra aws s3 sync
+    assert_success
+    [[ -d "$SCRIPTS_DIR/infra/aws/s3" ]]
+    [[ -f "$SCRIPTS_DIR/infra/aws/s3/s3-sync.sh" ]]
+}
+
+@test "new subtopic errors if script already exists" {
+    run "$REX_BIN" new nas backup create
+    assert_success
+
+    run "$REX_BIN" new nas backup create
+    assert_failure
+    assert_output --partial "already exists"
+}

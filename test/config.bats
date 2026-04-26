@@ -49,3 +49,16 @@ EOF
     assert_output --partial "$SCRIPTS_DIR"
     refute_output --partial "/nonexistent/path"
 }
+
+@test "invalid max_depth fails fast with clear error" {
+    mkdir -p "$XDG_CONFIG_HOME/rex"
+    cat > "$XDG_CONFIG_HOME/rex/config" << EOF
+$SCRIPTS_DIR
+max_depth=abc
+EOF
+    create_topic_script "widgets" "widgets-spin.sh" "Spin a widget"
+
+    run "$REX_BIN" list
+    assert_failure
+    assert_output --partial "invalid max_depth"
+}

@@ -80,3 +80,38 @@ setup() {
     assert_success
     assert_output --partial "Usage: rex completions"
 }
+
+# ── Subtopic completion tests ──────────────────────��──────────────────────────
+
+@test "position 3 completions for subtopic show its commands" {
+    set_max_depth 2
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create"
+    create_subtopic_script "nas/backup" "backup-restore.sh" "Restore"
+
+    run "$REX_BIN" --cmplt 3 rex nas backup
+    assert_success
+    assert_output --partial "create"
+    assert_output --partial "restore"
+    assert_output --partial "help"
+}
+
+@test "position 2 completions show subtopics when depth allows" {
+    set_max_depth 2
+    create_topic_script "nas" "nas-mount.sh" "Mount"
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create"
+
+    run "$REX_BIN" --cmplt 2 rex nas
+    assert_success
+    assert_output --partial "mount"
+    assert_output --partial "backup"
+}
+
+@test "position 2 completions do not show subtopics at default depth" {
+    create_topic_script "nas" "nas-mount.sh" "Mount"
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create"
+
+    run "$REX_BIN" --cmplt 2 rex nas
+    assert_success
+    assert_output --partial "mount"
+    refute_output --partial "backup"
+}

@@ -70,6 +70,39 @@ create_standalone_script() {
     echo "$script_path"
 }
 
+# Create a script in a nested subtopic directory
+# Usage: create_subtopic_script <topic/subtopic> <script_name> [description] [extra_header_lines...]
+create_subtopic_script() {
+    local topic_path="$1"
+    local script_name="$2"
+    local description="${3:-}"
+    shift 3 2>/dev/null || shift $#
+
+    local dir="$SCRIPTS_DIR/$topic_path"
+    mkdir -p "$dir"
+
+    local script_path="$dir/$script_name"
+    {
+        echo "#!/bin/bash"
+        if [[ -n "$description" ]]; then
+            echo "# Description: $description"
+        fi
+        for line in "$@"; do
+            echo "$line"
+        done
+        echo 'echo "executed: $0 $*"'
+    } > "$script_path"
+    chmod +x "$script_path"
+    echo "$script_path"
+}
+
+# Set max_depth in the rex config file
+set_max_depth() {
+    local depth="$1"
+    local config_file="$XDG_CONFIG_HOME/rex/config"
+    echo "max_depth=$depth" >> "$config_file"
+}
+
 # Create a second scripts directory for multi-dir tests
 create_second_scripts_dir() {
     export SCRIPTS_DIR2="$TEST_TMPDIR/scripts2"

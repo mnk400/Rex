@@ -107,3 +107,74 @@ EOF
     assert_output --partial "First dir fizzbuzz"
     refute_output --partial "Second dir fizzbuzz"
 }
+
+# ── Subtopic discovery tests ─────────────────────────────────────────────────
+
+@test "subtopics are not discovered at default max_depth=1" {
+    create_topic_script "nas" "nas-mount.sh" "Mount NAS"
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create backup"
+
+    run "$REX_BIN" list
+    assert_success
+    assert_output --partial "[nas]"
+    assert_output --partial "mount"
+    # Subtopic should not appear at depth 1
+    refute_output --partial "backup"
+}
+
+@test "subtopics are discovered with max_depth=2" {
+    set_max_depth 2
+    create_topic_script "nas" "nas-mount.sh" "Mount NAS"
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create backup"
+
+    run "$REX_BIN" list
+    assert_success
+    assert_output --partial "[nas]"
+    assert_output --partial "[nas > backup]"
+    assert_output --partial "create"
+}
+
+@test "subtopic strips leaf prefix from command names" {
+    set_max_depth 2
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create backup"
+
+    run "$REX_BIN" nas backup
+    assert_success
+    assert_output --partial "create"
+    refute_output --partial "backup-create"
+}
+
+@test "topic with only subtopics is discovered" {
+    set_max_depth 2
+    # nas/ has no direct executables, only a subdirectory
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create backup"
+
+    run "$REX_BIN" help
+    assert_success
+    assert_output --partial "nas"
+}
+
+@test "three levels deep with max_depth=3" {
+    set_max_depth 3
+    create_subtopic_script "infra/aws/s3" "s3-sync.sh" "Sync S3 bucket"
+
+    run "$REX_BIN" list
+    assert_success
+    assert_output --partial "[infra > aws > s3]"
+    assert_output --partial "sync"
+}
+
+@test "max_depth limits discovery depth" {
+    set_max_depth 2
+    create_subtopic_script "infra/aws" "aws-status.sh" "AWS status"
+    create_subtopic_script "infra/aws/s3" "s3-sync.sh" "Sync S3 bucket"
+
+    # infra/aws is at depth 2 (within limit) and has a command
+    # infra/aws/s3 is depth 3 and should not be reachable
+    run "$REX_BIN" list
+    assert_success
+    assert_output --partial "[infra > aws]"
+    assert_output --partial "status"
+    refute_output --partial "[infra > aws > s3]"
+    refute_output --partial "sync"
+}

@@ -38,7 +38,7 @@ setup() {
 
     run "$REX_BIN" edit widgets
     assert_failure
-    assert_output --partial "Usage: rex edit <topic> <command>"
+    assert_output --partial "Usage: rex edit <topic> [subtopic...] <command>"
 }
 
 @test "edit unknown standalone shows error" {
@@ -53,4 +53,42 @@ setup() {
     run "$REX_BIN" edit widgets nonexistent
     assert_failure
     assert_output --partial "Unknown widgets command"
+}
+
+@test "edit empty directory does not require topic command syntax" {
+    mkdir -p "$SCRIPTS_DIR/emptytopic"
+
+    run "$REX_BIN" edit emptytopic
+    assert_failure
+    assert_output --partial "Unknown command: emptytopic"
+}
+
+# ── Subtopic edit tests ──────────────────────────────────────��───────────────
+
+@test "edit subtopic command opens correct script" {
+    set_max_depth 2
+    local script_path
+    script_path=$(create_subtopic_script "nas/backup" "backup-create.sh" "Create backup")
+
+    run "$REX_BIN" edit nas backup create
+    assert_success
+    assert_output --partial "$script_path"
+}
+
+@test "edit subtopic with no command shows usage" {
+    set_max_depth 2
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create backup"
+
+    run "$REX_BIN" edit nas backup
+    assert_failure
+    assert_output --partial "Usage: rex edit <topic> [subtopic...] <command>"
+}
+
+@test "edit unknown subtopic command shows error" {
+    set_max_depth 2
+    create_subtopic_script "nas/backup" "backup-create.sh" "Create backup"
+
+    run "$REX_BIN" edit nas backup nonexistent
+    assert_failure
+    assert_output --partial "Unknown backup command"
 }
